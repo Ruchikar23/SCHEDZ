@@ -85,7 +85,7 @@ class SchedzHomepage:
 
         tk.Label(
             left_box,
-            text="Planning made simple!",
+            text="Planning made simple! • Open-Source Project Lab",
             font=("Segoe UI", 10),
             fg="#E0F2FE",
             bg="#0284C7"

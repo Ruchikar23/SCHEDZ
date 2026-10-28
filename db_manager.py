@@ -261,8 +261,8 @@ def register_user(username, email, phone, password, user_type, department):
 
 
 # Schedule Management
-def get_schedules(query=None, department=None):
-    """Retrieves schedules with optional search query and department filter."""
+def get_schedules(query=None, department=None, order_by="id ASC"):
+    """Retrieves schedules in increasing numeric order by ID with optional search query and department filter."""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -278,7 +278,7 @@ def get_schedules(query=None, department=None):
         sql += " AND (department = ? OR department = 'Both')"
         params.append(department)
 
-    sql += " ORDER BY date ASC, time ASC"
+    sql += f" ORDER BY {order_by}"
 
     cursor.execute(sql, params)
     rows = [dict(r) for r in cursor.fetchall()]
@@ -287,7 +287,7 @@ def get_schedules(query=None, department=None):
 
 
 def add_schedule(event_name, date, time, venue, description, department="College", status="Upcoming", created_by="Admin"):
-    """Adds a new schedule, ensuring no exact duplicate exists."""
+    """Adds a new schedule with an iterated numeric ID in increasing order."""
     if not all([event_name, date, time, venue]):
         return False, "Event name, Date, Time, and Venue are required."
 
@@ -303,10 +303,15 @@ def add_schedule(event_name, date, time, venue, description, department="College
             conn.close()
             return False, "A schedule with the same event name, date, and time already exists!"
 
+        # Ensure next ID iterates sequentially in increasing numeric order
+        cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM SCHEDULE")
+        next_id = cursor.fetchone()[0]
+
         cursor.execute("""
-            INSERT INTO SCHEDULE (event_name, date, time, venue, description, department, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (event_name.strip(), date.strip(), time.strip(), venue.strip(), description.strip(), department, status, created_by))
+            INSERT INTO SCHEDULE (id, event_name, date, time, venue, description, department, status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (next_id, event_name.strip(), date.strip(), time.strip(), venue.strip(), description.strip(), department, status, created_by))
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'SCHEDULE'", (next_id,))
         conn.commit()
         conn.close()
         return True, "Schedule added successfully!"
@@ -316,12 +321,15 @@ def add_schedule(event_name, date, time, venue, description, department="College
 
 
 def delete_schedule(schedule_id):
-    """Deletes a schedule by its ID."""
+    """Deletes a schedule by its ID and synchronizes sequence counter."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM SCHEDULE WHERE id = ?", (schedule_id,))
         cursor.execute("DELETE FROM SHOWFLOW WHERE event_id = ?", (schedule_id,))
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM SCHEDULE")
+        max_id = cursor.fetchone()[0]
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'SCHEDULE'", (max_id,))
         conn.commit()
         conn.close()
         return True, "Schedule removed successfully."
