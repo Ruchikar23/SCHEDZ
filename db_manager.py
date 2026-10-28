@@ -402,29 +402,34 @@ def delete_note(note_id):
 
 # Showflow Management
 def get_showflow(event_name=None):
-    """Retrieves showflow timeline items."""
+    """Retrieves showflow timeline items arranged in increasing numeric order by ID."""
     conn = get_connection()
     cursor = conn.cursor()
     if event_name and event_name != "All Events":
         cursor.execute("SELECT * FROM SHOWFLOW WHERE event_name = ? ORDER BY id ASC", (event_name,))
     else:
-        cursor.execute("SELECT * FROM SHOWFLOW ORDER BY event_name ASC, id ASC")
+        cursor.execute("SELECT * FROM SHOWFLOW ORDER BY id ASC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
 
 def add_showflow_item(event_name, time_slot, activity, incharge, remarks=""):
-    """Adds a new timeline activity to the event showflow."""
+    """Adds a new timeline activity to the event showflow with an iterated sequential ID."""
     if not all([event_name, time_slot, activity, incharge]):
         return False, "Event, Time Slot, Activity, and Incharge are required."
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Determine next iterating sequential ID in increasing order
+        cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM SHOWFLOW")
+        next_id = cursor.fetchone()[0]
+
         cursor.execute("""
-            INSERT INTO SHOWFLOW (event_name, time_slot, activity, incharge, remarks)
-            VALUES (?, ?, ?, ?, ?)
-        """, (event_name.strip(), time_slot.strip(), activity.strip(), incharge.strip(), remarks.strip()))
+            INSERT INTO SHOWFLOW (id, event_name, time_slot, activity, incharge, remarks)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (next_id, event_name.strip(), time_slot.strip(), activity.strip(), incharge.strip(), remarks.strip()))
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'SHOWFLOW'", (next_id,))
         conn.commit()
         conn.close()
         return True, "Showflow activity added successfully!"
@@ -434,11 +439,14 @@ def add_showflow_item(event_name, time_slot, activity, incharge, remarks=""):
 
 
 def delete_showflow_item(item_id):
-    """Deletes a showflow activity item."""
+    """Deletes a showflow activity item and synchronizes sequence counter."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM SHOWFLOW WHERE id = ?", (item_id,))
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM SHOWFLOW")
+        max_id = cursor.fetchone()[0]
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'SHOWFLOW'", (max_id,))
         conn.commit()
         conn.close()
         return True, "Activity deleted."
