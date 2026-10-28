@@ -11,7 +11,6 @@ import os
 # Clean, simplified color palette
 COLORS = {
     "gradient_start": "#CBE7F6",  # Soft Light Blue
-    "gradient_end": "#FFFFFF",    # Clean White
     "primary": "#0284C7",         # Friendly Royal/Sky Blue
     "primary_hover": "#0369A1",   # Darker Blue on hover
     "secondary": "#0D9488",       # Teal accent
@@ -27,7 +26,6 @@ COLORS = {
 FONTS = {
     "title_large": ("Segoe UI", 18, "bold"),
     "title": ("Segoe UI", 14, "bold"),
-    "subtitle": ("Segoe UI", 11, "bold"),
     "body": ("Segoe UI", 10),
     "body_bold": ("Segoe UI", 10, "bold"),
     "small": ("Segoe UI", 9),
@@ -43,7 +41,6 @@ def draw_light_gradient(canvas, width, height, color1="#BAE6FD", color2="#FFFFFF
 
     # Hex to RGB helper
     def hex_to_rgb(hex_str):
-        hex_str = hex_str.lstrip("#")
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
     r1, g1, b1 = hex_to_rgb(color1)
@@ -65,7 +62,6 @@ def draw_light_gradient(canvas, width, height, color1="#BAE6FD", color2="#FFFFFF
             0, y0, width, y1,
             fill=color,
             outline=color,
-            tags="gradient_lines"
         )
     canvas.tag_lower("gradient_lines")
 
@@ -106,7 +102,6 @@ def setup_ttk_theme():
         background="#BAE6FD",
         foreground="#0F172A",
         font=FONTS["body_bold"],
-        relief="flat",
         padding=6
     )
     style.map(
@@ -123,7 +118,6 @@ def setup_ttk_theme():
     )
     style.configure(
         "TNotebook.Tab",
-        background="#E2E8F0",
         foreground="#334155",
         font=FONTS["body_bold"],
         padding=[14, 6]
