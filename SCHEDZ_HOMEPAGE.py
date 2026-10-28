@@ -159,6 +159,7 @@ class SchedzHomepage:
         self.search_entry = tk.Entry(filter_bar, font=FONTS["body"], bg="#FFFFFF", fg="#0F172A", relief="solid", bd=1, width=20)
         self.search_entry.pack(side="left", padx=(0, 12), ipady=3)
         self.search_entry.bind("<KeyRelease>", lambda e: self.load_schedules())
+        self.search_entry.bind("<Return>", lambda e: self.search_schedule_action())
 
         # Department Filter
         tk.Label(filter_bar, text="Department:", font=FONTS["body_bold"], bg="#F0F9FF", fg="#0F172A").pack(side="left", padx=(0, 5))
@@ -171,7 +172,7 @@ class SchedzHomepage:
         tk.Button(
             filter_bar,
             text="Enter / Search",
-            command=self.load_schedules,
+            command=self.search_schedule_action,
             bg="#0284C7",
             fg="#FFFFFF",
             font=FONTS["small"],
@@ -226,6 +227,15 @@ class SchedzHomepage:
         scroll_y.pack(side="right", fill="y")
         self.schedule_table.pack(fill="both", expand=True)
 
+        self.load_schedules()
+
+    def search_schedule_action(self):
+        """Validates that a search term was entered before searching."""
+        q = self.search_entry.get().strip()
+        if not q:
+            messagebox.showwarning("Notice", "Please enter the text that is to be searched")
+            self.search_entry.focus_set()
+            return
         self.load_schedules()
 
     def load_schedules(self):
