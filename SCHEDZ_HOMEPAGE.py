@@ -52,6 +52,8 @@ class SchedzHomepage:
         # State for notes
         self.current_selected_note_id = None
         self.notes_data = []
+        self._auto_save_timer = None
+        self._is_auto_saving = False
 
         # Build clean header and tabs
         self.build_header()
@@ -681,6 +683,16 @@ class SchedzHomepage:
         text_scroll.pack(side="right", fill="y")
         self.note_content_text.pack(fill="both", expand=True)
 
+        # Real-time typing listeners for live auto-saving
+        self.note_title_entry.bind("<KeyRelease>", self.on_note_typing)
+        self.note_content_text.bind("<KeyRelease>", self.on_note_typing)
+
+        # Enter key in Title entry moves focus to Note Content
+        self.note_title_entry.bind("<Return>", lambda e: self.note_content_text.focus_set())
+
+        # Ctrl+Return in Content immediately saves without popup
+        self.note_content_text.bind("<Control-Return>", lambda e: self.save_note_action(silent=True))
+
         # 3. Action Buttons Row
         btn_row = tk.Frame(right_box, bg="#F0F9FF")
         btn_row.pack(fill="x")
@@ -717,7 +729,7 @@ class SchedzHomepage:
         ).pack(side="right")
 
         # Keyboard Shortcut Ctrl+S to save
-        self.root.bind("<Control-s>", lambda e: self.save_note_action())
+        self.root.bind("<Control-s>", lambda e: self.save_note_action(silent=True))
 
         # Load notes initially
         self.load_notes()
@@ -741,7 +753,10 @@ class SchedzHomepage:
             ))
 
     def on_select_tree_note(self, event=None):
-        """When a note is clicked in the list, load it into the editor."""
+        """When a note is clicked in the list, flush any pending save and load the note."""
+        if self._is_auto_saving:
+            return
+
         sel = self.notes_tree.selection()
         if not sel:
             return
@@ -750,8 +765,16 @@ class SchedzHomepage:
             return
         note_id = item_vals[0]
 
+        # If this note is already active in the editor, do not reload or overwrite status
+        if self.current_selected_note_id is not None and str(note_id) == str(self.current_selected_note_id):
+            return
+
+        # Flush any pending auto-save for current note before switching to a different note
+        if self._auto_save_timer is not None:
+            self.auto_save_note()
+
         for n in self.notes_data:
-            if n["id"] == note_id:
+            if str(n["id"]) == str(note_id):
                 self.current_selected_note_id = n["id"]
                 self.note_title_entry.delete(0, tk.END)
                 self.note_title_entry.insert(0, n["title"])
@@ -762,8 +785,78 @@ class SchedzHomepage:
                 self.note_status_lbl.config(text=f"Author: {n['username']}", fg="#0369A1")
                 break
 
+    def on_note_typing(self, event=None):
+        """Debounces user keystrokes and auto-saves 600ms after user pauses typing."""
+        self.note_status_lbl.config(text="Typing...", fg="#D97706")
+        if self._auto_save_timer is not None:
+            self.root.after_cancel(self._auto_save_timer)
+        self._auto_save_timer = self.root.after(600, self.auto_save_note)
+
+    def auto_save_note(self):
+        """Automatically saves typed content to SQLite and updates the notes list in real time."""
+        if self._auto_save_timer is not None:
+            try:
+                self.root.after_cancel(self._auto_save_timer)
+            except Exception:
+                pass
+            self._auto_save_timer = None
+
+        title = self.note_title_entry.get().strip()
+        content = self.note_content_text.get("1.0", tk.END).strip()
+
+        # Do not save if both title and content are empty
+        if not title and not content:
+            return
+
+        # If title is empty but content is being typed, use first line of content as title
+        if not title and content:
+            first_line = content.split("\n")[0][:25].strip()
+            title = first_line if first_line else "Untitled Note"
+
+        target_id = self.current_selected_note_id
+        self._is_auto_saving = True
+        try:
+            if target_id is not None:
+                # Update existing note in DB and update tree view row in place
+                ok, _ = update_note(target_id, title, content)
+                if ok:
+                    for child in self.notes_tree.get_children():
+                        vals = self.notes_tree.item(child)["values"]
+                        if vals and str(vals[0]) == str(target_id):
+                            author = vals[2] if len(vals) > 2 else self.username
+                            self.notes_tree.item(child, values=(target_id, title, author))
+                            break
+                    for n in self.notes_data:
+                        if n["id"] == target_id:
+                            n["title"] = title
+                            n["content"] = content
+                            break
+                    now_str = datetime.now().strftime("%I:%M:%S %p")
+                    self.note_status_lbl.config(text=f"✔ Auto-saved at {now_str}", fg="#16A34A")
+            elif title:
+                # Create new note in DB and highlight it in the list
+                ok, _ = add_note(self.username, title, content)
+                if ok:
+                    self.load_notes()
+                    if self.notes_data:
+                        latest_id = self.notes_data[0]["id"]
+                        self.current_selected_note_id = latest_id
+                        self.select_note_in_tree(latest_id)
+                    now_str = datetime.now().strftime("%I:%M:%S %p")
+                    self.note_status_lbl.config(text=f"✔ Auto-saved at {now_str}", fg="#16A34A")
+                    self.editor_mode_lbl.config(text=f"✏️ Editing Note #{self.current_selected_note_id}")
+        finally:
+            self._is_auto_saving = False
+
     def new_blank_note(self):
         """Clears the editor so the user can type and save a fresh note."""
+        if self._auto_save_timer is not None:
+            try:
+                self.root.after_cancel(self._auto_save_timer)
+            except Exception:
+                pass
+            self._auto_save_timer = None
+
         self.current_selected_note_id = None
         self.note_title_entry.delete(0, tk.END)
         self.note_content_text.delete("1.0", tk.END)
@@ -776,28 +869,37 @@ class SchedzHomepage:
         """Finds and highlights a note in the Treeview by ID."""
         for child in self.notes_tree.get_children():
             vals = self.notes_tree.item(child)["values"]
-            if vals and vals[0] == target_id:
+            if vals and str(vals[0]) == str(target_id):
                 self.notes_tree.selection_set(child)
                 self.notes_tree.focus(child)
                 self.notes_tree.see(child)
                 break
 
-    def save_note_action(self):
+    def save_note_action(self, silent=False):
         """
         Saves the note into SQLite.
         Immediately reflects the saved note in the notes directory list and selects it!
         """
+        if self._auto_save_timer is not None:
+            try:
+                self.root.after_cancel(self._auto_save_timer)
+            except Exception:
+                pass
+            self._auto_save_timer = None
+
         title = self.note_title_entry.get().strip()
         content = self.note_content_text.get("1.0", tk.END).strip()
 
         if not title:
-            messagebox.showerror("Error", "Please enter a Title for the note!")
-            self.note_title_entry.focus_set()
+            if not silent:
+                messagebox.showerror("Error", "Please enter a Title for the note!")
+                self.note_title_entry.focus_set()
             return
 
         if not content:
-            messagebox.showerror("Error", "Please enter Content for the note!")
-            self.note_content_text.focus_set()
+            if not silent:
+                messagebox.showerror("Error", "Please enter Content for the note!")
+                self.note_content_text.focus_set()
             return
 
         target_id = self.current_selected_note_id
@@ -826,12 +928,21 @@ class SchedzHomepage:
             self.note_status_lbl.config(text=f"✔ Saved at {now_str}", fg="#16A34A")
             self.editor_mode_lbl.config(text=f"✏️ Editing Note: {title[:20]}")
 
-            messagebox.showinfo("Success", "Note saved and reflected in your notes list!")
+            if not silent:
+                messagebox.showinfo("Success", "Note saved and reflected in your notes list!")
         else:
-            messagebox.showerror("Error", msg)
+            if not silent:
+                messagebox.showerror("Error", msg)
 
     def delete_note_action(self):
         """Deletes the selected note and clears the editor."""
+        if self._auto_save_timer is not None:
+            try:
+                self.root.after_cancel(self._auto_save_timer)
+            except Exception:
+                pass
+            self._auto_save_timer = None
+
         sel = self.notes_tree.selection()
         if not sel:
             messagebox.showwarning("Notice", "Please select a note from the list to delete.")
