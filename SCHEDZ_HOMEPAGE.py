@@ -31,6 +31,16 @@ from ui_theme import (
 init_db()
 
 
+class AutoScrollbar(ttk.Scrollbar):
+    """A scrollbar that automatically hides itself when content fits and appears when scrolling is needed."""
+    def set(self, lo, hi):
+        if float(lo) <= 0.0 and float(hi) >= 1.0:
+            self.grid_remove()
+        else:
+            self.grid()
+        super().set(lo, hi)
+
+
 class SchedzHomepage:
     def __init__(self, root, user_type="Admin", username="admin", department="College"):
         self.root = root
@@ -201,6 +211,8 @@ class SchedzHomepage:
         # Table
         table_frame = tk.Frame(self.tab_schedules, bg="#FFFFFF")
         table_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
 
         cols = ("id", "event_name", "date", "time", "venue", "department", "status", "description")
         self.schedule_table = ttk.Treeview(table_frame, columns=cols, show="headings", selectmode="browse")
@@ -214,21 +226,79 @@ class SchedzHomepage:
         self.schedule_table.heading("status", text="Status")
         self.schedule_table.heading("description", text="Description")
 
-        self.schedule_table.column("id", width=40, anchor="center")
-        self.schedule_table.column("event_name", width=200, anchor="w")
-        self.schedule_table.column("date", width=90, anchor="center")
-        self.schedule_table.column("time", width=80, anchor="center")
-        self.schedule_table.column("venue", width=160, anchor="w")
-        self.schedule_table.column("department", width=90, anchor="center")
-        self.schedule_table.column("status", width=80, anchor="center")
-        self.schedule_table.column("description", width=220, anchor="w")
+        self.schedule_table.column("id", width=45, minwidth=35, anchor="center", stretch=False)
+        self.schedule_table.column("event_name", width=240, minwidth=160, anchor="w", stretch=False)
+        self.schedule_table.column("date", width=100, minwidth=85, anchor="center", stretch=False)
+        self.schedule_table.column("time", width=90, minwidth=75, anchor="center", stretch=False)
+        self.schedule_table.column("venue", width=190, minwidth=130, anchor="w", stretch=False)
+        self.schedule_table.column("department", width=95, minwidth=85, anchor="center", stretch=False)
+        self.schedule_table.column("status", width=90, minwidth=80, anchor="center", stretch=False)
+        self.schedule_table.column("description", width=650, minwidth=300, anchor="w", stretch=False)
 
-        scroll_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.schedule_table.yview)
-        self.schedule_table.configure(yscrollcommand=scroll_y.set)
-        scroll_y.pack(side="right", fill="y")
-        self.schedule_table.pack(fill="both", expand=True)
+        # Smart AutoScrollbars: automatically hide when not needed, movable when content overflows
+        scroll_y = AutoScrollbar(table_frame, orient="vertical", command=self.schedule_table.yview)
+        scroll_x = AutoScrollbar(table_frame, orient="horizontal", command=self.schedule_table.xview)
+        self.schedule_table.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+        self.schedule_table.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
+
+        # Mouse wheel support: normal scroll for vertical, Shift+wheel for horizontal
+        def _on_mousewheel(event):
+            if event.state & 0x0001:  # Shift held -> scroll horizontally
+                self.schedule_table.xview_scroll(int(-1 * (event.delta / 120)), "units")
+            else:
+                self.schedule_table.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        self.schedule_table.bind("<MouseWheel>", _on_mousewheel)
+
+        # Double-click to view complete schedule details (especially long descriptions)
+        self.schedule_table.bind("<Double-1>", self.on_schedule_double_click)
 
         self.load_schedules()
+
+    def on_schedule_double_click(self, event=None):
+        """Opens a clean details modal when double-clicking a schedule row."""
+        sel = self.schedule_table.selection()
+        if not sel:
+            return
+        vals = self.schedule_table.item(sel[0])["values"]
+        if not vals:
+            return
+
+        detail_win = tk.Toplevel(self.root)
+        detail_win.title(f"Event Details - {vals[1]}")
+        detail_win.geometry("520x420")
+        detail_win.configure(bg="#F0F9FF")
+        detail_win.transient(self.root)
+
+        card = tk.Frame(detail_win, bg="#FFFFFF", relief="solid", bd=1, padx=20, pady=16)
+        card.pack(fill="both", expand=True, padx=16, pady=16)
+
+        tk.Label(card, text=f"#{vals[0]}  {vals[1]}", font=FONTS["title"], bg="#FFFFFF", fg="#0284C7").pack(anchor="w", pady=(0, 10))
+
+        grid_f = tk.Frame(card, bg="#FFFFFF")
+        grid_f.pack(fill="x", pady=(0, 10))
+
+        tk.Label(grid_f, text="Date & Time:", font=FONTS["body_bold"], bg="#FFFFFF", fg="#475569").grid(row=0, column=0, sticky="w", pady=2)
+        tk.Label(grid_f, text=f"{vals[2]} at {vals[3]}", font=FONTS["body"], bg="#FFFFFF", fg="#0F172A").grid(row=0, column=1, sticky="w", padx=10, pady=2)
+
+        tk.Label(grid_f, text="Venue:", font=FONTS["body_bold"], bg="#FFFFFF", fg="#475569").grid(row=1, column=0, sticky="w", pady=2)
+        tk.Label(grid_f, text=str(vals[4]), font=FONTS["body"], bg="#FFFFFF", fg="#0F172A").grid(row=1, column=1, sticky="w", padx=10, pady=2)
+
+        tk.Label(grid_f, text="Department:", font=FONTS["body_bold"], bg="#FFFFFF", fg="#475569").grid(row=2, column=0, sticky="w", pady=2)
+        tk.Label(grid_f, text=str(vals[5]), font=FONTS["body"], bg="#FFFFFF", fg="#0F172A").grid(row=2, column=1, sticky="w", padx=10, pady=2)
+
+        tk.Label(grid_f, text="Status:", font=FONTS["body_bold"], bg="#FFFFFF", fg="#475569").grid(row=3, column=0, sticky="w", pady=2)
+        tk.Label(grid_f, text=str(vals[6]), font=FONTS["body_bold"], bg="#FFFFFF", fg="#0284C7").grid(row=3, column=1, sticky="w", padx=10, pady=2)
+
+        tk.Label(card, text="Full Description:", font=FONTS["body_bold"], bg="#FFFFFF", fg="#475569").pack(anchor="w", pady=(5, 3))
+        desc_box = tk.Text(card, font=FONTS["body"], bg="#F8FAFC", fg="#0F172A", relief="solid", bd=1, wrap="word", height=5)
+        desc_box.insert("1.0", str(vals[7]))
+        desc_box.configure(state="disabled")
+        desc_box.pack(fill="both", expand=True, pady=(0, 10))
+
+        tk.Button(card, text="Close", command=detail_win.destroy, bg="#0284C7", fg="#FFFFFF", font=FONTS["body_bold"], relief="flat", cursor="hand2", padx=16, pady=4).pack(side="right")
 
     def search_schedule_action(self):
         """Validates that a search term was entered before searching."""

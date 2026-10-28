@@ -122,10 +122,17 @@ def setup_ttk_theme():
         font=FONTS["body_bold"],
         padding=[14, 6]
     )
+    # Clean Scrollbars
+    style.configure(
+        "TScrollbar",
+        background="#BAE6FD",
+        troughcolor="#F1F5F9",
+        borderwidth=0,
+        arrowsize=14
+    )
     style.map(
-        "TNotebook.Tab",
-        background=[("selected", "#0284C7")],
-        foreground=[("selected", "#FFFFFF")]
+        "TScrollbar",
+        background=[("active", "#0284C7"), ("pressed", "#0369A1")]
     )
 
     return style
