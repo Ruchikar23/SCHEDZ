@@ -76,12 +76,29 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id INTEGER,
             event_name TEXT NOT NULL,
+            department TEXT DEFAULT 'College',
             time_slot TEXT NOT NULL,
             activity TEXT NOT NULL,
             incharge TEXT NOT NULL,
             remarks TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+    """)
+
+    # Ensure department column exists in case table was created without it
+    cursor.execute("PRAGMA table_info(SHOWFLOW)")
+    sf_cols = [col[1] for col in cursor.fetchall()]
+    if "department" not in sf_cols:
+        cursor.execute("ALTER TABLE SHOWFLOW ADD COLUMN department TEXT DEFAULT 'College'")
+
+    # Populate any missing department values from SCHEDULE table
+    cursor.execute("""
+        UPDATE SHOWFLOW
+        SET department = COALESCE(
+            (SELECT s.department FROM SCHEDULE s WHERE LOWER(s.event_name) = LOWER(SHOWFLOW.event_name) LIMIT 1),
+            'College'
+        )
+        WHERE department IS NULL OR department = ''
     """)
 
     conn.commit()
@@ -416,34 +433,60 @@ def delete_note(note_id):
 
 
 # Showflow Management
-def get_showflow(event_name=None):
-    """Retrieves showflow timeline items arranged in increasing numeric order by ID."""
+def get_showflow(event_name=None, department=None):
+    """Retrieves showflow timeline items arranged in increasing numeric order by ID, optionally filtered by event or department."""
     conn = get_connection()
     cursor = conn.cursor()
+    query = """
+        SELECT sf.id, sf.event_id, sf.event_name,
+               COALESCE(sf.department, s.department, 'College') AS department,
+               sf.time_slot, sf.activity, sf.incharge, sf.remarks, sf.created_at
+        FROM SHOWFLOW sf
+        LEFT JOIN SCHEDULE s ON LOWER(sf.event_name) = LOWER(s.event_name)
+    """
+    conditions = []
+    params = []
+
     if event_name and event_name != "All Events":
-        cursor.execute("SELECT * FROM SHOWFLOW WHERE event_name = ? ORDER BY id ASC", (event_name,))
-    else:
-        cursor.execute("SELECT * FROM SHOWFLOW ORDER BY id ASC")
+        conditions.append("sf.event_name = ?")
+        params.append(event_name.strip())
+
+    if department and department != "All":
+        conditions.append("LOWER(COALESCE(sf.department, s.department, 'College')) = LOWER(?)")
+        params.append(department.strip())
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY sf.id ASC"
+
+    cursor.execute(query, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
 
-def add_showflow_item(event_name, time_slot, activity, incharge, remarks=""):
-    """Adds a new timeline activity to the event showflow with an iterated sequential ID."""
+def add_showflow_item(event_name, time_slot, activity, incharge, remarks="", department=None):
+    """Adds a new timeline activity to the event showflow with an iterated sequential ID and department."""
     if not all([event_name, time_slot, activity, incharge]):
         return False, "Event, Time Slot, Activity, and Incharge are required."
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # Determine department if not explicitly provided
+        if not department:
+            cursor.execute("SELECT department FROM SCHEDULE WHERE LOWER(event_name) = LOWER(?) LIMIT 1", (event_name.strip(),))
+            dept_res = cursor.fetchone()
+            department = dept_res[0] if dept_res and dept_res[0] else "College"
+
         # Determine next iterating sequential ID in increasing order
         cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM SHOWFLOW")
         next_id = cursor.fetchone()[0]
 
         cursor.execute("""
-            INSERT INTO SHOWFLOW (id, event_name, time_slot, activity, incharge, remarks)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (next_id, event_name.strip(), time_slot.strip(), activity.strip(), incharge.strip(), remarks.strip()))
+            INSERT INTO SHOWFLOW (id, event_name, department, time_slot, activity, incharge, remarks)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (next_id, event_name.strip(), department.strip(), time_slot.strip(), activity.strip(), incharge.strip(), remarks.strip()))
         cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'SHOWFLOW'", (next_id,))
         conn.commit()
         conn.close()

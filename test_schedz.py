@@ -78,6 +78,23 @@ def test_database_and_auth():
     delete_schedule(schedules[0]["id"])
     print("    [OK] Cleaned up test note and schedule")
 
+    # Test Showflow CRUD and Department Bifurcations
+    print("[-] Testing Showflow Department Bifurcations...")
+    college_sf = get_showflow(department="College")
+    assert len(college_sf) > 0 and all(item["department"] == "College" for item in college_sf), "College showflow retrieval failed"
+    print(f"    [OK] Verified College showflow: {len(college_sf)} items")
+
+    school_sf = get_showflow(department="School")
+    assert len(school_sf) > 0 and all(item["department"] == "School" for item in school_sf), "School showflow retrieval failed"
+    print(f"    [OK] Verified School showflow: {len(school_sf)} items")
+
+    ok_sf, _ = add_showflow_item("Test Lab Presentation", "02:00 PM", "Demo Activity", "Incharge", "Remarks", department="College")
+    assert ok_sf, "Add showflow item failed"
+    latest_college = get_showflow(department="College")
+    assert latest_college[-1]["activity"] == "Demo Activity"
+    delete_showflow_item(latest_college[-1]["id"])
+    print("    [OK] Showflow item added with department and cleaned up successfully")
+
     stats = get_dashboard_stats()
     print("    [OK] System Stats verified:", stats)
 

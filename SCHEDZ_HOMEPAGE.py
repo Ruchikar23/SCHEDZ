@@ -32,10 +32,11 @@ init_db()
 
 
 class SchedzHomepage:
-    def __init__(self, root, user_type="Admin", username="admin"):
+    def __init__(self, root, user_type="Admin", username="admin", department="College"):
         self.root = root
         self.user_type = user_type if user_type else "Admin"
         self.username = username if username else "admin"
+        self.department = department if department else "College"
 
         apply_window_decorations(self.root, f"S C H E D Z - Homepage ({self.user_type})")
         self.root.geometry("1020x720")
@@ -384,7 +385,28 @@ class SchedzHomepage:
         top_bar = tk.Frame(self.tab_showflow, bg="#F0F9FF", padx=10, pady=8, relief="solid", bd=1)
         top_bar.pack(fill="x", padx=10, pady=(10, 8))
 
-        tk.Label(top_bar, text="Event Itinerary Flow", font=FONTS["body_bold"], bg="#F0F9FF", fg="#0F172A").pack(side="left")
+        tk.Label(top_bar, text="Event Itinerary Flow", font=FONTS["body_bold"], bg="#F0F9FF", fg="#0F172A").pack(side="left", padx=(0, 15))
+
+        # Department dropbox filter section with 2 bifurcations: College and School
+        dept_section = tk.Frame(top_bar, bg="#F0F9FF")
+        dept_section.pack(side="left")
+
+        tk.Label(dept_section, text="Department:", font=FONTS["body_bold"], bg="#F0F9FF", fg="#0F172A").pack(side="left", padx=(0, 5))
+        dept_val = getattr(self, "department", "College")
+        default_dept = dept_val if dept_val in ["College", "School"] else "College"
+        self.showflow_dept_var = tk.StringVar(value=default_dept)
+        self.showflow_dept_cb = ttk.Combobox(
+            dept_section,
+            textvariable=self.showflow_dept_var,
+            values=["College", "School"],
+            state="readonly",
+            width=12
+        )
+        self.showflow_dept_cb.pack(side="left")
+        self.showflow_dept_cb.bind("<<ComboboxSelected>>", lambda e: self.load_showflow())
+
+        self.showflow_count_lbl = tk.Label(dept_section, text="", font=FONTS["small"], bg="#F0F9FF", fg="#64748B")
+        self.showflow_count_lbl.pack(side="left", padx=(8, 0))
 
         if self.user_type in ["Admin", "Committee"]:
             tk.Button(
@@ -416,22 +438,24 @@ class SchedzHomepage:
         table_frame = tk.Frame(self.tab_showflow, bg="#FFFFFF")
         table_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        cols = ("id", "event_name", "time_slot", "activity", "incharge", "remarks")
+        cols = ("id", "event_name", "department", "time_slot", "activity", "incharge", "remarks")
         self.showflow_table = ttk.Treeview(table_frame, columns=cols, show="headings", selectmode="browse")
 
         self.showflow_table.heading("id", text="#")
         self.showflow_table.heading("event_name", text="Event Name")
+        self.showflow_table.heading("department", text="Department")
         self.showflow_table.heading("time_slot", text="Time Slot")
         self.showflow_table.heading("activity", text="Activity / Agenda")
         self.showflow_table.heading("incharge", text="In-Charge")
         self.showflow_table.heading("remarks", text="Remarks")
 
         self.showflow_table.column("id", width=35, anchor="center")
-        self.showflow_table.column("event_name", width=200, anchor="w")
-        self.showflow_table.column("time_slot", width=140, anchor="center")
-        self.showflow_table.column("activity", width=220, anchor="w")
-        self.showflow_table.column("incharge", width=120, anchor="w")
-        self.showflow_table.column("remarks", width=180, anchor="w")
+        self.showflow_table.column("event_name", width=190, anchor="w")
+        self.showflow_table.column("department", width=85, anchor="center")
+        self.showflow_table.column("time_slot", width=130, anchor="center")
+        self.showflow_table.column("activity", width=210, anchor="w")
+        self.showflow_table.column("incharge", width=110, anchor="w")
+        self.showflow_table.column("remarks", width=160, anchor="w")
 
         scroll_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.showflow_table.yview)
         self.showflow_table.configure(yscrollcommand=scroll_y.set)
@@ -443,16 +467,25 @@ class SchedzHomepage:
     def load_showflow(self):
         for item in self.showflow_table.get_children():
             self.showflow_table.delete(item)
-        rows = get_showflow()
+        dept = self.showflow_dept_var.get() if hasattr(self, "showflow_dept_var") else "College"
+        rows = get_showflow(department=dept)
+        if hasattr(self, "showflow_count_lbl"):
+            self.showflow_count_lbl.config(text=f"({len(rows)} activities)")
         for r in rows:
             self.showflow_table.insert("", "end", values=(
-                r["id"], r["event_name"], r["time_slot"], r["activity"], r["incharge"], r["remarks"]
+                r["id"],
+                r["event_name"],
+                r.get("department", dept),
+                r["time_slot"],
+                r["activity"],
+                r["incharge"],
+                r.get("remarks", "")
             ))
 
     def show_add_activity_dialog(self):
         win = tk.Toplevel(self.root)
         win.title("Add Activity to Showflow")
-        win.geometry("420x380")
+        win.geometry("440x440")
         win.configure(bg="#F0F9FF")
 
         tk.Label(win, text="Add Showflow Activity", font=FONTS["title"], bg="#F0F9FF", fg="#0284C7").pack(pady=10)
@@ -466,6 +499,28 @@ class SchedzHomepage:
         ev_var = tk.StringVar(value=names[0])
         ev_cb = ttk.Combobox(f, textvariable=ev_var, values=names, state="readonly")
         ev_cb.pack(fill="x", pady=(2, 6))
+
+        # Department selection with College and School bifurcations
+        tk.Label(f, text="Department *", font=FONTS["body_bold"], bg="#F0F9FF").pack(anchor="w")
+        initial_dept = "College"
+        for s in scheds:
+            if s["event_name"] == names[0]:
+                if s.get("department") in ["College", "School"]:
+                    initial_dept = s["department"]
+                break
+        dept_dialog_var = tk.StringVar(value=initial_dept)
+        dept_dialog_cb = ttk.Combobox(f, textvariable=dept_dialog_var, values=["College", "School"], state="readonly")
+        dept_dialog_cb.pack(fill="x", pady=(2, 6))
+
+        def on_event_selected(e=None):
+            chosen = ev_var.get()
+            for s in scheds:
+                if s["event_name"] == chosen:
+                    d = s.get("department")
+                    if d in ["College", "School"]:
+                        dept_dialog_var.set(d)
+                    break
+        ev_cb.bind("<<ComboboxSelected>>", on_event_selected)
 
         tk.Label(f, text="Time Slot (e.g. 10:00 AM - 10:30 AM) *", font=FONTS["body_bold"], bg="#F0F9FF").pack(anchor="w")
         ts_e = tk.Entry(f, font=FONTS["body"], relief="solid", bd=1)
@@ -487,10 +542,15 @@ class SchedzHomepage:
             if not (ev_var.get() and ts_e.get() and ac_e.get() and ic_e.get()):
                 messagebox.showerror("Error", "Please fill in all mandatory fields!")
                 return
-            ok, msg = add_showflow_item(ev_var.get(), ts_e.get(), ac_e.get(), ic_e.get(), rm_e.get())
+            chosen_dept = dept_dialog_var.get()
+            ok, msg = add_showflow_item(
+                ev_var.get(), ts_e.get(), ac_e.get(), ic_e.get(), rm_e.get(), department=chosen_dept
+            )
             if ok:
                 messagebox.showinfo("Success", "Activity added!")
                 win.destroy()
+                # Switch main tab filter to the added activity's department so it's immediately visible
+                self.showflow_dept_var.set(chosen_dept)
                 self.load_showflow()
             else:
                 messagebox.showerror("Error", msg)
