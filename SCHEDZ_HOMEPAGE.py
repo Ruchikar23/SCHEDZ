@@ -827,7 +827,7 @@ class SchedzHomepage:
                 if ok:
                     self.load_notes()
                     if self.notes_data:
-                        latest_id = self.notes_data[0]["id"]
+                        latest_id = self.notes_data[-1]["id"]
                         self.current_selected_note_id = latest_id
                         self.select_note_in_tree(latest_id)
                     now_str = datetime.now().strftime("%I:%M:%S %p")
@@ -907,8 +907,8 @@ class SchedzHomepage:
             if target_id is not None:
                 self.select_note_in_tree(target_id)
             elif self.notes_data:
-                # The newest note is at the top of the list
-                latest_id = self.notes_data[0]["id"]
+                # The newest note is at the end of the list in increasing order
+                latest_id = self.notes_data[-1]["id"]
                 self.current_selected_note_id = latest_id
                 self.select_note_in_tree(latest_id)
 

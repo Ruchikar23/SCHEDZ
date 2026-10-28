@@ -71,9 +71,12 @@ def test_database_and_auth():
     assert any(n["title"] == "Demo Note Title" for n in notes), "Note retrieval failed"
     print("    [OK] Note added and retrieved successfully")
 
-    # Clean up test schedule
+    # Clean up test note and schedule
+    for n in notes:
+        if n["title"] == "Demo Note Title":
+            delete_note(n["id"])
     delete_schedule(schedules[0]["id"])
-    print("    [OK] Cleaned up test schedule")
+    print("    [OK] Cleaned up test note and schedule")
 
     stats = get_dashboard_stats()
     print("    [OK] System Stats verified:", stats)

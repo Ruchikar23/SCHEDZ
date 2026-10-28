@@ -340,7 +340,7 @@ def delete_schedule(schedule_id):
 
 # Notes Management
 def get_notes(user_or_role=None):
-    """Retrieves notes. If user_or_role is given, retrieves notes matching that username or role."""
+    """Retrieves notes in increasing numeric order by ID. If user_or_role is given, retrieves notes matching that username or role."""
     conn = get_connection()
     cursor = conn.cursor()
     if user_or_role and user_or_role != "All Notes":
@@ -348,24 +348,31 @@ def get_notes(user_or_role=None):
             SELECT n.* FROM NOTES n
             LEFT JOIN USER_MAGMT u ON LOWER(n.username) = LOWER(u.Username)
             WHERE LOWER(n.username) = LOWER(?) OR LOWER(u.User_type) = LOWER(?)
-            ORDER BY n.id DESC
+            ORDER BY n.id ASC
         """, (user_or_role.strip(), user_or_role.strip()))
     else:
-        cursor.execute("SELECT * FROM NOTES ORDER BY id DESC")
+        cursor.execute("SELECT * FROM NOTES ORDER BY id ASC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
 
 def add_note(username, title, content):
-    """Adds a new note."""
+    """Adds a new note with an iterated numeric ID in increasing order."""
     if not title or not content:
         return False, "Title and content cannot be empty."
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO NOTES (username, title, content) VALUES (?, ?, ?)",
-                       (username, title.strip(), content.strip()))
+        # Determine next iterating sequential ID in increasing order
+        cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM NOTES")
+        next_id = cursor.fetchone()[0]
+
+        cursor.execute("""
+            INSERT INTO NOTES (id, username, title, content)
+            VALUES (?, ?, ?, ?)
+        """, (next_id, username, title.strip(), content.strip()))
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'NOTES'", (next_id,))
         conn.commit()
         conn.close()
         return True, "Note saved successfully!"
@@ -392,11 +399,14 @@ def update_note(note_id, title, content):
 
 
 def delete_note(note_id):
-    """Deletes a note."""
+    """Deletes a note and synchronizes sequence counter."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM NOTES WHERE id = ?", (note_id,))
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM NOTES")
+        max_id = cursor.fetchone()[0]
+        cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'NOTES'", (max_id,))
         conn.commit()
         conn.close()
         return True, "Note deleted."
