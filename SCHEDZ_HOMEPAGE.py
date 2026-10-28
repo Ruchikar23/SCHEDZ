@@ -181,20 +181,6 @@ class SchedzHomepage:
             pady=3
         ).pack(side="left", padx=3)
 
-        # Refresh Button
-        tk.Button(
-            filter_bar,
-            text="Refresh",
-            command=self.load_schedules,
-            bg="#E2E8F0",
-            fg="#0F172A",
-            font=FONTS["small"],
-            relief="flat",
-            cursor="hand2",
-            padx=8,
-            pady=3
-        ).pack(side="left", padx=3)
-
         # Export CSV Button
         tk.Button(
             filter_bar,
