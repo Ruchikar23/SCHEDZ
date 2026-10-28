@@ -339,12 +339,17 @@ def delete_schedule(schedule_id):
 
 
 # Notes Management
-def get_notes(username=None):
-    """Retrieves notes. If username is given, retrieves notes for that user or all notes if Admin."""
+def get_notes(user_or_role=None):
+    """Retrieves notes. If user_or_role is given, retrieves notes matching that username or role."""
     conn = get_connection()
     cursor = conn.cursor()
-    if username:
-        cursor.execute("SELECT * FROM NOTES WHERE username = ? ORDER BY id DESC", (username,))
+    if user_or_role and user_or_role != "All Notes":
+        cursor.execute("""
+            SELECT n.* FROM NOTES n
+            LEFT JOIN USER_MAGMT u ON LOWER(n.username) = LOWER(u.Username)
+            WHERE LOWER(n.username) = LOWER(?) OR LOWER(u.User_type) = LOWER(?)
+            ORDER BY n.id DESC
+        """, (user_or_role.strip(), user_or_role.strip()))
     else:
         cursor.execute("SELECT * FROM NOTES ORDER BY id DESC")
     rows = [dict(r) for r in cursor.fetchall()]

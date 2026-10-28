@@ -557,13 +557,19 @@ class SchedzHomepage:
             pady=2
         ).pack(side="right")
 
-        # Filter option (All Notes vs My Notes)
+        # Filter option (All Notes, Admin, Committee, Student)
         filter_row = tk.Frame(left_box, bg="#F0F9FF")
         filter_row.pack(fill="x", pady=(0, 6))
 
         tk.Label(filter_row, text="Filter:", font=FONTS["small"], bg="#F0F9FF", fg="#475569").pack(side="left", padx=(0, 4))
         self.note_filter_var = tk.StringVar(value="All Notes")
-        note_filter_cb = ttk.Combobox(filter_row, textvariable=self.note_filter_var, values=["All Notes", "My Notes"], state="readonly", width=12)
+        note_filter_cb = ttk.Combobox(
+            filter_row,
+            textvariable=self.note_filter_var,
+            values=["All Notes", "Admin", "Committee", "Student"],
+            state="readonly",
+            width=12
+        )
         note_filter_cb.pack(side="left")
         note_filter_cb.bind("<<ComboboxSelected>>", lambda e: self.load_notes())
 
@@ -722,7 +728,7 @@ class SchedzHomepage:
             self.notes_tree.delete(item)
 
         filter_choice = self.note_filter_var.get()
-        user_filter = self.username if filter_choice == "My Notes" else None
+        user_filter = None if filter_choice == "All Notes" else filter_choice
 
         self.notes_data = get_notes(user_filter)
         self.notes_count_lbl.config(text=f"{len(self.notes_data)} notes")
