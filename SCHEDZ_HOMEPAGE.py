@@ -181,20 +181,6 @@ class SchedzHomepage:
             pady=3
         ).pack(side="left", padx=3)
 
-        # Export CSV Button
-        tk.Button(
-            filter_bar,
-            text="Export CSV",
-            command=self.export_csv,
-            bg="#0D9488",
-            fg="#FFFFFF",
-            font=FONTS["small"],
-            relief="flat",
-            cursor="hand2",
-            padx=8,
-            pady=3
-        ).pack(side="left", padx=3)
-
         # Admin: Delete Button
         if self.user_type == "Admin":
             tk.Button(
